@@ -1,48 +1,57 @@
 #!/usr/bin/env python3
 """
-web cache and tracker
+This module contains the get_page function which fetches and caches
+the HTML content of a given URL. It tracks the number of accesses
+to the URL and caches the result for a short duration.
 """
+
 import requests
 import redis
+from typing import Callable
 from functools import wraps
 
-store = redis.Redis()
+# Connect to Redis
+r = redis.Redis()
 
+def cache_page(expiration: int):
+    """
+    Decorator that caches the result of the function for a given
+    expiration time and tracks the number of times the URL is accessed.
 
-def count_url_access(method):
-    """ Decorator counting how many times
-    a URL is accessed """
-    @wraps(method)
-    def wrapper(url):
-        cached_key = "cached:" + url
-        cached_data = store.get(cached_key)
-        if cached_data:
-            return cached_data.decode("utf-8")
+    Args:
+        expiration (int): The expiration time for the cache in seconds.
 
-        count_key = "count:" + url
-        html = method(url)
+    Returns:
+        Callable: The wrapped function.
+    """
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        def wrapper(url: str) -> str:
+            # Track access count
+            r.incr(f"count:{url}")
+            # Check if URL is cached
+            cached_page = r.get(url)
+            if cached_page:
+                return cached_page.decode('utf-8')
 
-        store.incr(count_key)
-        store.set(cached_key, html)
-        store.expire(cached_key, 10)
-        return html
-    return wrapper
+            # Fetch and cache the page
+            page_content = func(url)
+            r.setex(url, expiration, page_content)
+            return page_content
 
+        return wrapper
+    return decorator
 
-@count_url_access
+@cache_page(expiration=10)
 def get_page(url: str) -> str:
-    """ Returns HTML content of a url """
-    res = requests.get(url)
-    return res.text
+    """
+    Fetches the HTML content of a given URL.
 
+    Args:
+        url (str): The URL to fetch.
 
-# Test the function with a slow URL
-if __name__ == "__main__":
-    test_url = "http://slowwly.robertomurray.co.uk/delay/5000/url/http://www.example.com"
-
-    print(get_page(test_url))
-    print(f"Access count for {test_url}: {url_access_count[f'count:{test_url}']}")
-
-    # Calling it again within 10 seconds should hit the cache
-    print(get_page(test_url))
-    print(f"Access count for {test_url}: {url_access_count[f'count:{test_url}']}
+    Returns:
+        str: The HTML content of the page.
+    """
+    response = requests.get(url)
+    return response.text
