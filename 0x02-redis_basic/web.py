@@ -1,57 +1,39 @@
 #!/usr/bin/env python3
 """
-This module contains the get_page function which fetches and caches
-the HTML content of a given URL. It tracks the number of accesses
-to the URL and caches the result for a short duration.
+web cache and tracker
 """
 
 import requests
 import redis
-from typing import Callable
 from functools import wraps
 
-# Connect to Redis
-r = redis.Redis()
+# Initialize the Redis connection
+store = redis.Redis()
 
-def cache_page(expiration: int):
-    """
-    Decorator that caches the result of the function for a given
-    expiration time and tracks the number of times the URL is accessed.
+def count_url_access(method):
+    """ Decorator counting how many times a URL is accessed """
+    @wraps(method)
+    def wrapper(url):
+        cached_key = f"cached:{url}"
+        cached_data = store.get(cached_key)
+        
+        # If data is in cache, return it
+        if cached_data:
+            return cached_data.decode("utf-8")
 
-    Args:
-        expiration (int): The expiration time for the cache in seconds.
+        # If not, increment the count and fetch the data
+        count_key = f"count:{url}"
+        store.incr(count_key)
+        html = method(url)
+        
+        # Store the fetched data in cache with an expiration of 10 seconds
+        store.setex(cached_key, 10, html)
+        return html
+    return wrapper
 
-    Returns:
-        Callable: The wrapped function.
-    """
-    def decorator(func: Callable) -> Callable:
-        @wraps(func)
-        def wrapper(url: str) -> str:
-            # Track access count
-            r.incr(f"count:{url}")
-            # Check if URL is cached
-            cached_page = r.get(url)
-            if cached_page:
-                return cached_page.decode('utf-8')
-
-            # Fetch and cache the page
-            page_content = func(url)
-            r.setex(url, expiration, page_content)
-            return page_content
-
-        return wrapper
-    return decorator
-
-@cache_page(expiration=10)
+@count_url_access
 def get_page(url: str) -> str:
-    """
-    Fetches the HTML content of a given URL.
+    """ Returns HTML content of a url """
+    res = requests.get(url)
+    return res.text
 
-    Args:
-        url (str): The URL to fetch.
-
-    Returns:
-        str: The HTML content of the page.
-    """
-    response = requests.get(url)
-    return response.text
