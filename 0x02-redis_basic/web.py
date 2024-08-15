@@ -34,3 +34,15 @@ def get_page(url: str) -> str:
     """ Returns HTML content of a url """
     res = requests.get(url)
     return res.text
+
+
+# Test the function with a slow URL
+if __name__ == "__main__":
+    test_url = "http://slowwly.robertomurray.co.uk/delay/5000/url/http://www.example.com"
+
+    print(get_page(test_url))
+    print(f"Access count for {test_url}: {url_access_count[f'count:{test_url}']}")
+
+    # Calling it again within 10 seconds should hit the cache
+    print(get_page(test_url))
+    print(f"Access count for {test_url}: {url_access_count[f'count:{test_url}']}
